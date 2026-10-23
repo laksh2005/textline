@@ -18,12 +18,12 @@ Automation, SQLite via Electron's built-in `node:sqlite`, and electron-builder f
 | Requirement | How | Where |
 |---|---|---|
 | **Now** view: app in focus + its text, live | Main pushes every switch and every new capture to the UI over IPC. While you look at Textline itself, it keeps showing the last app. | `NowView.jsx`, `capture.js` |
-| **Timeline**: app, window, time, duration; click any point | A bar of sessions over 15m/1h/4h/24h. Clicking a point finds the session in focus then and its latest capture. You can step through earlier and later captures. | `TimelineView.jsx`, `db.getScreenAt` |
-| Track foreground app + window, timestamp every switch | `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`. Each new window, or new title (e.g. a browser tab), starts a session with a start and end time. | `uia.cc`, `capture.js` |
-| Read text from the accessibility tree, with structure | UI Automation tree → lines with roles: headings, list items, links, inputs, sender labels ("Name:"). The browser URL comes from the web document. | `uia.cc`, `format.js` |
+| **Timeline**: app, window, time, duration; click any point | A bar of sessions over 15m/1h/4h/24h. Clicking a point finds the session in focus then and its latest capture. You can step through earlier and later captures, or search all captured text. | `TimelineView.jsx`, `db.getScreenAt`, `db.search` |
+| Track foreground app + window, timestamp every switch | `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`. Each new window, or new title (e.g. a browser tab), starts a session with a start and end time. Unread counts like "(3) WhatsApp" are ignored. | `uia.cc`, `capture.js` |
+| Read text from the accessibility tree, with structure | UI Automation tree → lines with roles: headings, list items, links, inputs, sender labels ("Name:"), and the region they sit in (main content vs. navigation). The browser URL comes from the web document. | `uia.cc`, `format.js` |
 | Re-capture on change, skip duplicates | Name, value, scroll and structure events (debounced) plus a 3 s poll. A SHA-256 of URL + content is compared with the last capture. | `uia.cc`, `capture.js` |
 | Runs in the background from the tray | Closing the window hides it. The tray has open, pause/resume, start at login and quit. | `tray.js`, `index.js` |
-| Stored locally | SQLite file at `%APPDATA%\Textline\textline.db` | `db.js` |
+| Stored locally | SQLite file at `%APPDATA%\Textline\textline.db`, with a daily backup in `backups/` (last 7 kept) | `db.js` |
 | Electron + React only | UI is React in Electron. Windows access is a native Node addon loaded in Electron's main process, with no helper process or other runtime. | `native/uia` |
 | No screenshots, recording or OCR | Text comes only from UI Automation properties (Name, Value, TextPattern). No pixel APIs are used anywhere. | `uia.cc` |
 | No per-app integrations | One code path for every app. Nothing branches on app names. | `format.js` |
@@ -75,7 +75,7 @@ resume or quit. Data is stored in `%APPDATA%\Textline\textline.db`.
 | `native/uia/uia.cc` | The only code that talks to Windows. Hooks focus and content-change events (`SetWinEventHook`), returns the focused window, and reads its UI Automation tree. |
 | `src/main/capture.js` | The capture loop: event or 3 s poll → session switch → snapshot → dedupe → save → notify. |
 | `src/main/format.js` | Turns the raw tree into structured lines (headings, list items, links, inputs, body text) and finds the browser URL. App-agnostic. |
-| `src/main/db.js` | SQLite storage (`node:sqlite`, built into Electron): `sessions` and `snapshots`. |
+| `src/main/db.js` | SQLite storage (`node:sqlite`, built into Electron): `sessions`, `snapshots`, full-text search (FTS5) and daily backups. |
 | `src/main/tray.js`, `index.js` | Tray menu, window and IPC wiring. |
 | `src/preload/index.js` | The only bridge between React and the main process. |
 | `src/renderer/` | React UI: **Now** and **Timeline**. |
@@ -98,6 +98,17 @@ resume or quit. Data is stored in `%APPDATA%\Textline\textline.db`.
   a message isn't a capture per keystroke. The draft is saved with the next real change.
 - **A session is one window with one title.** Switching apps or browser tabs (the title changes)
   starts a new timeline entry with its own timestamp.
+- **Embedded content windows.** Some apps draw their content in a window owned by a helper
+  process they started, placed on top of their own frame. WhatsApp Desktop does this with WebView2:
+  its frame has no text, and the chat lives in a `msedgewebview2` window. Textline also reads
+  visible windows of the app's child processes that sit inside its window. That's one generic rule,
+  with no app names.
+- **Main content first.** Apps mark regions of their window as UI Automation landmarks (HTML
+  `<main>`/`<nav>`, ARIA roles). The reading view shows only the main region when there is one,
+  hiding buttons and menus. "Show whole window" brings everything back. Apps without landmarks show
+  everything except buttons.
+- **One slow app can't stop recording.** Each window read has a 5 s limit. A window that doesn't
+  answer is skipped for a minute instead of being asked again, which would pile up and slow it down.
 - **Built-in SQLite.** Electron's Node ships `node:sqlite`, so there is no second native module to
   compile.
 - **Runs off the main thread.** Snapshots run on a worker thread with UIA timeouts (2 s connect,
@@ -116,12 +127,13 @@ resume or quit. Data is stored in `%APPDATA%\Textline\textline.db`.
 | Google Chrome / Microsoft Edge | ✅ Text, tabs, URL | Chromium builds its tree lazily: the first read can be thin, so Textline retries once. |
 | Electron apps (e.g. Claude desktop) | ✅ Full text, URL | Same lazy tree behaviour as Chrome. |
 | Notepad | ✅ Full file text | Editor text comes from TextPattern, not Value. |
-| WhatsApp Web (Chrome) | ✅ Messages, senders, links, chat name | Senders appear as labels ("You:", contact name) before each message. Message bodies are plain text runs that Chromium marks as non-control, so Textline adds every Text element to the control view. Tested in Chrome; the WhatsApp desktop app was not installed on the test machine. |
+| WhatsApp Desktop | ✅ Chat list, messages, message box | The window in focus (a WinUI frame) has no text and can stop answering. The chat is a WebView2 window owned by a child process, so it's read as an embedded window. There is no "main" landmark, so the whole window is shown. |
+| WhatsApp Web (Chrome) | ✅ Messages, senders, links, chat name | Senders appear as labels ("You:", contact name) before each message. Message bodies are plain text runs that Chromium marks as non-control, so Textline adds every Text element to the control view. |
 | Microsoft Teams | ✅ Messages, senders, day/time headings | Each message is exposed as a heading like "message by Sender". |
 | Discord | ✅ Channels, messages, links | Electron app; same lazy tree as Chrome. |
 | Microsoft Word | ✅ Document text, headings | Page content comes through TextPattern. Headers and footers are captured too. |
 | File Explorer, Windows Search | ✅ Files, folders, results | |
-| Visual Studio Code | ⚠️ UI only, **no editor text** | VS Code hides editor contents from accessibility clients unless screen reader mode is on ("The editor is not accessible at this time"). Turn on `"editor.accessibilitySupport": "on"` and the editor's visible lines become readable. Textline doesn't flip the Windows-wide "screen reader running" flag to force it, because that's a system setting that changes how every app behaves. |
+| Visual Studio Code | ⚠️ **Editor text only with a setting** | By default VS Code hides editor contents from accessibility clients ("The editor is not accessible at this time"), so only the UI is captured. With `"editor.accessibilitySupport": "on"` the file's text is captured and tagged as the main region (tested). Textline doesn't flip the Windows-wide "screen reader running" flag to force it, because that's a system setting that changes how every app behaves. |
 
 General limits:
 
@@ -133,13 +145,21 @@ General limits:
 - **Very large trees** are capped at 8,000 elements, and editor text at 50,000 characters.
 - **Offscreen filtering** relies on apps reporting `IsOffscreen` correctly. If an app marks
   everything offscreen, the whole tree is kept.
+- **Storage grows with use.** Each capture stores the full screen text (about 7 MB for an hour of
+  active use in testing). Next steps: store diffs between captures, compress, and a retention setting.
+- **Unresponsive windows** are skipped for a minute after a 5 s timeout. A stuck read keeps a worker
+  thread busy until the app answers.
+- **Main content** relies on apps marking landmarks. Many web and Electron apps do, but most native
+  apps and Teams don't, so those show the whole window.
+- **Cost:** about 1 to 2% of total CPU (8 cores) while switching apps actively, and about 420 MB of
+  RAM, mostly Electron's own baseline. Idle cost wasn't measured separately.
 - **Change detection** is event-driven with a 3 s poll, so a change that appears and disappears
   within about 3 s without firing an event can be missed.
 
 ## Tests
 
 ```bash
-npm test   # formatter: URL detection, roles, multi-line text, dedupe of repeats, offscreen
+npm test   # formatter: URL, roles, multi-line text, repeats, offscreen, regions, title cleanup
 ```
 
 ## Dev scripts

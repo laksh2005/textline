@@ -58,7 +58,8 @@ export function formatTree(nodes) {
     // "main" for the main content; navigation, search etc. count as "side".
     regionAt.length = n.depth
     let region = regionAt[n.depth - 1] ?? null
-    if (n.landmark) region = n.landmark === MAIN_LANDMARK ? 'main' : 'side'
+    // A landmark nested inside the main region (e.g. a "Primary pane") is still main.
+    if (n.landmark && region !== 'main') region = n.landmark === MAIN_LANDMARK ? 'main' : 'side'
     regionAt[n.depth] = region
 
     // A browser's web page is a "document" whose value is the page URL.

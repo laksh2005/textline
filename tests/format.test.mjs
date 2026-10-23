@@ -118,3 +118,16 @@ test('tags lines with the landmark region they sit in', () => {
     ]
   )
 })
+
+test('a landmark nested inside the main region stays main', () => {
+  const MAIN = 80002,
+    CUSTOM = 80000,
+    GROUP = 50026
+  const { lines } = formatTree([
+    node(0, WINDOW, 'App'),
+    node(1, GROUP, 'Content', { landmark: MAIN }),
+    node(2, GROUP, 'Primary pane', { landmark: CUSTOM }),
+    node(3, TEXT, 'the message')
+  ])
+  assert.equal(lines.find((l) => l.text === 'the message').region, 'main')
+})

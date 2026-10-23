@@ -88,7 +88,11 @@ resume or quit. Data is stored in `%APPDATA%\Textline\textline.db`.
 | Electron apps (e.g. Claude desktop) | ✅ Full text, URL | Same lazy tree behaviour as Chrome. |
 | Notepad | ✅ Full file text | Editor text comes from TextPattern, not Value. |
 | WhatsApp Web (Chrome) | ✅ Messages, senders, links, chat name | Senders appear as labels ("You:", contact name) before each message. Message bodies are plain text runs that Chromium marks as non-control, so Textline adds every Text element to the control view. Tested in Chrome; the WhatsApp desktop app was not installed on the test machine. |
-| VS Code, Teams, Discord, Word | _pending_ | |
+| Microsoft Teams | ✅ Messages, senders, day/time headings | Each message is exposed as a heading like "message by Sender". |
+| Discord | ✅ Channels, messages, links | Electron app; same lazy tree as Chrome. |
+| Microsoft Word | ✅ Document text, headings | Page content comes through TextPattern. Headers and footers are captured too. |
+| File Explorer, Windows Search | ✅ Files, folders, results | |
+| Visual Studio Code | ⚠️ UI only, **no editor text** | VS Code hides editor contents from accessibility clients unless screen reader mode is on ("The editor is not accessible at this time"). Turn on `"editor.accessibilitySupport": "on"` and the editor's visible lines become readable. Textline doesn't flip the Windows-wide "screen reader running" flag to force it, because that's a system setting that changes how every app behaves. |
 
 General limits:
 

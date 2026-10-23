@@ -53,7 +53,7 @@ export function createCapture(uia, onUpdate) {
     // is a switch: end the old session and start a new one.
     if (!current || current.hwnd !== fg.hwnd || current.title !== fg.title) {
       closeCurrent(now)
-      const app = basename(fg.exe, '.exe')
+      const app = basename(fg.exe).replace(/\.exe$/i, '') // WINWORD.EXE -> WINWORD
       const sessionId = db.startSession({ app, exe: fg.exe, title: fg.title }, now)
       current = {
         hwnd: fg.hwnd,

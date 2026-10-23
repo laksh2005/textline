@@ -6,12 +6,21 @@ import { formatTime } from '../time'
 // A short line ending in ":" is a label for what follows, e.g. a sender ("Alex:", "You:").
 const isLabel = (line) => line.kind === 'text' && /^[^:]{1,40}:$/.test(line.text)
 
+// By default show what you'd actually read: the app's main content (if it marks one)
+// without buttons and menus. "Show whole window" shows every captured line.
+function readableLines(lines, wholeWindow) {
+  if (wholeWindow) return lines
+  const hasMain = lines.some((l) => l.region === 'main')
+  const shown = lines.filter((l) => l.kind !== 'control' && (!hasMain || l.region === 'main'))
+  const minDepth = Math.min(...shown.map((l) => l.depth))
+  return shown.map((l) => ({ ...l, depth: l.depth - minDepth }))
+}
+
 export default function ScreenText({ session, snapshot, live = false }) {
-  // Buttons and menu items are captured too, but they're mostly noise when reading.
-  const [showInterface, setShowInterface] = useState(false)
+  const [wholeWindow, setWholeWindow] = useState(false)
 
   if (!session) return <p className="notice">Nothing was captured at this moment.</p>
-  const lines = snapshot?.lines.filter((l) => showInterface || l.kind !== 'control') ?? []
+  const lines = readableLines(snapshot?.lines ?? [], wholeWindow)
 
   return (
     <article className="screen">
@@ -32,10 +41,10 @@ export default function ScreenText({ session, snapshot, live = false }) {
         <label className="toggle">
           <input
             type="checkbox"
-            checked={showInterface}
-            onChange={(e) => setShowInterface(e.target.checked)}
+            checked={wholeWindow}
+            onChange={(e) => setWholeWindow(e.target.checked)}
           />
-          Show interface
+          Show whole window
         </label>
       </header>
 

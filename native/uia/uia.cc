@@ -4,7 +4,7 @@
 //   start(callback)   - listens for window events, calls callback("foreground" | "change")
 //   stop()
 //   getForeground()   - { hwnd, pid, title, exe } of the window in focus
-//   snapshot(hwnd)    - Promise<{ nodes: [{ depth, type, name, value, heading, offscreen }] }>
+//   snapshot(hwnd)    - Promise<{ nodes: [{ depth, type, name, value, heading, landmark, offscreen }] }>
 //
 // Text comes only from the UI Automation accessibility tree. No pixels are read.
 
@@ -153,6 +153,7 @@ struct Node {
   std::string name;
   std::string value;
   int heading;       // 0 = not a heading, 1..9 = heading level
+  int landmark;      // 0 = none, else UIA landmark type id (main, navigation, search, ...)
   bool offscreen;
 };
 
@@ -161,7 +162,7 @@ static const size_t kMaxNodes = 8000;
 static void Walk(IUIAutomationElement* el, int depth, std::vector<Node>& out) {
   if (!el || out.size() >= kMaxNodes) return;
 
-  Node n{depth, 0, "", "", 0, false};
+  Node n{depth, 0, "", "", 0, 0, false};
   CONTROLTYPEID type = 0;
   el->get_CachedControlType(&type);
   n.type = type;
@@ -183,6 +184,14 @@ static void Walk(IUIAutomationElement* el, int depth, std::vector<Node>& out) {
   if (SUCCEEDED(el->GetCachedPropertyValue(UIA_HeadingLevelPropertyId, &v)) && v.vt == VT_I4 &&
       v.lVal > HeadingLevel_None && v.lVal <= HeadingLevel9) {
     n.heading = v.lVal - HeadingLevel_None;
+  }
+  VariantClear(&v);
+
+  // Landmarks mark the regions of a window (main content, navigation, search),
+  // e.g. from HTML <main>/<nav> or ARIA roles in web apps.
+  VariantInit(&v);
+  if (SUCCEEDED(el->GetCachedPropertyValue(UIA_LandmarkTypePropertyId, &v)) && v.vt == VT_I4) {
+    n.landmark = v.lVal;
   }
   VariantClear(&v);
 
@@ -267,6 +276,7 @@ class SnapshotWorker : public Napi::AsyncWorker {
     cache->AddProperty(UIA_IsPasswordPropertyId);
     cache->AddProperty(UIA_IsOffscreenPropertyId);
     cache->AddProperty(UIA_HeadingLevelPropertyId);
+    cache->AddProperty(UIA_LandmarkTypePropertyId);
     cache->put_TreeScope(TreeScope_Subtree);
     // Control view hides layout noise, but Chromium also marks plain text runs
     // (e.g. a chat message body) as non-control. So: control view OR any Text element.
@@ -307,6 +317,7 @@ class SnapshotWorker : public Napi::AsyncWorker {
       o.Set("name", n.name);
       o.Set("value", n.value);
       o.Set("heading", n.heading);
+      o.Set("landmark", n.landmark);
       o.Set("offscreen", n.offscreen);
       arr.Set(i, o);
     }

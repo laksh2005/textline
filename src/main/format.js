@@ -33,6 +33,9 @@ const ROLES = {
   50038: 'separator'
 }
 
+// UIA_MainLandmarkTypeId: the region an app marks as its main content (e.g. HTML <main>).
+const MAIN_LANDMARK = 80002
+
 // Window chrome that never carries content.
 const SKIP = new Set(['scrollbar', 'thumb', 'separator', 'titlebar'])
 
@@ -44,11 +47,19 @@ export function formatTree(nodes) {
 
   const lines = []
   const parentText = [] // text of the nearest ancestor at each depth, to drop repeats
+  const regionAt = [] // region of the nearest landmark ancestor at each depth
   let url = null
 
   for (const n of visible) {
     const role = ROLES[n.type] ?? 'other'
     parentText.length = n.depth
+
+    // Which part of the window is this in? Apps mark regions as landmarks:
+    // "main" for the main content; navigation, search etc. count as "side".
+    regionAt.length = n.depth
+    let region = regionAt[n.depth - 1] ?? null
+    if (n.landmark) region = n.landmark === MAIN_LANDMARK ? 'main' : 'side'
+    regionAt[n.depth] = region
 
     // A browser's web page is a "document" whose value is the page URL.
     if (!url && role === 'document' && looksLikeUrl(n.value)) url = n.value
@@ -57,10 +68,10 @@ export function formatTree(nodes) {
     // Multi-line text (an editor's contents): keep its own lines.
     if (/[\r\n]/.test(n.value ?? '')) {
       const label = clean(n.name)
-      if (label) lines.push({ depth: n.depth, kind: kindOf(role), role, text: label })
+      if (label) lines.push({ depth: n.depth, kind: kindOf(role), role, region, text: label })
       for (const raw of n.value.split(/\r\n|\r|\n/)) {
         const text = raw.replace(/\s+$/, '')
-        if (text) lines.push({ depth: n.depth + 1, kind: 'body', role, text })
+        if (text) lines.push({ depth: n.depth + 1, kind: 'body', role, region, text })
       }
       continue
     }
@@ -77,7 +88,7 @@ export function formatTree(nodes) {
     parentText[n.depth] = text
 
     const kind = n.heading ? 'heading' : kindOf(role)
-    lines.push({ depth: n.depth, kind, level: n.heading || undefined, role, text })
+    lines.push({ depth: n.depth, kind, level: n.heading || undefined, role, region, text })
   }
 
   // Indent relative to the shallowest line, capped so deep trees stay readable.

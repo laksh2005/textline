@@ -95,3 +95,26 @@ test('drops a leading unread count from window titles', () => {
   assert.equal(cleanTitle('(99+) Inbox'), 'Inbox')
   assert.equal(cleanTitle('Report (2) - Word'), 'Report (2) - Word')
 })
+
+test('tags lines with the landmark region they sit in', () => {
+  const MAIN = 80002,
+    NAV = 80003,
+    GROUP = 50026
+  const { lines } = formatTree([
+    node(0, WINDOW, 'App'),
+    node(1, GROUP, 'Chats', { landmark: NAV }),
+    node(2, TEXT, 'Alice'),
+    node(1, GROUP, 'Conversation', { landmark: MAIN }),
+    node(2, TEXT, 'hello there')
+  ])
+  assert.deepEqual(
+    lines.map((l) => [l.text, l.region]),
+    [
+      ['App', null],
+      ['Chats', 'side'],
+      ['Alice', 'side'],
+      ['Conversation', 'main'],
+      ['hello there', 'main']
+    ]
+  )
+})

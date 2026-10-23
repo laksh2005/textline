@@ -5,6 +5,9 @@ directories:
 files:
   - '!**/.vscode/*'
   - '!src/*'
+  - '!scripts/*'
+  - '!native/uia/*.{cc,gyp}'
+  - '!native/uia/build/**/*.{obj,pdb,lib,exp,iobj,ipdb,tlog,log,vcxproj*}'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
@@ -13,31 +16,11 @@ asarUnpack:
   - native/uia/build/Release/*.node
 win:
   executableName: Textline
+  target: nsis
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
-  shortcutName: ${productName}
-  uninstallDisplayName: ${productName}
+  artifactName: Textline-${version}-setup.${ext}
+  shortcutName: Textline
+  uninstallDisplayName: Textline
   createDesktopShortcut: always
-mac:
-  entitlementsInherit: build/entitlements.mac.plist
-  extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-  notarize: false
-dmg:
-  artifactName: ${name}-${version}.${ext}
-linux:
-  target:
-    - AppImage
-    - snap
-    - deb
-  maintainer: electronjs.org
-  category: Utility
-appImage:
-  artifactName: ${name}-${version}.${ext}
+# The native addon is built by `npm run build:native`; don't rebuild during packaging.
 npmRebuild: false
-publish:
-  provider: generic
-  url: https://example.com/auto-updates

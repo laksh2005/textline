@@ -22,7 +22,19 @@ npm run build:native   # compile the UI Automation addon for Electron
 npm run dev            # start the app (window + tray icon)
 ```
 
-Build an installer with `npm run build:win` (output in `dist/`).
+### Installer
+
+```bash
+npm run build:native   # once, if not done already
+npm run build:win      # -> dist/Textline-1.0.0-setup.exe
+```
+
+The installer is per-user (no admin needed) and adds Start menu and desktop shortcuts. It's
+unsigned, so Windows SmartScreen may ask you to confirm with "More info → Run anyway".
+
+If packaging fails with `EXDEV`/`EPERM` while renaming a `7zip` folder in the electron-builder
+cache (antivirus can lock freshly extracted tools), point the cache at the project drive:
+`set ELECTRON_BUILDER_CACHE=%CD%\node_modules\.cache\electron-builder`, then build again.
 
 Closing the window keeps Textline recording in the tray. Right-click the tray icon to pause,
 resume or quit. Data is stored in `%APPDATA%\Textline\textline.db`.

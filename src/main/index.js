@@ -6,6 +6,7 @@ import * as db from './db'
 import { loadUia } from './native'
 import { createCapture } from './capture'
 import { createTray } from './tray'
+import icon from '../../resources/icon.png?asset'
 
 let win = null
 let capture = null
@@ -20,6 +21,7 @@ function createWindow() {
     show: false,
     autoHideMenuBar: true,
     title: 'Textline',
+    icon, // taskbar + title bar icon (the green logo)
     webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false }
   })
   win.on('ready-to-show', () => win.show())

@@ -268,8 +268,19 @@ class SnapshotWorker : public Napi::AsyncWorker {
     cache->AddProperty(UIA_IsOffscreenPropertyId);
     cache->AddProperty(UIA_HeadingLevelPropertyId);
     cache->put_TreeScope(TreeScope_Subtree);
+    // Control view hides layout noise, but Chromium also marks plain text runs
+    // (e.g. a chat message body) as non-control. So: control view OR any Text element.
+    IUIAutomationCondition* isText = nullptr;
+    VARIANT textType;
+    textType.vt = VT_I4;
+    textType.lVal = UIA_TextControlTypeId;
     uia->get_ControlViewCondition(&controlView);
-    cache->put_TreeFilter(controlView);
+    uia->CreatePropertyCondition(UIA_ControlTypePropertyId, textType, &isText);
+    IUIAutomationCondition* filter = nullptr;
+    uia->CreateOrCondition(controlView, isText, &filter);
+    cache->put_TreeFilter(filter);
+    isText->Release();
+    filter->Release();
 
     HRESULT hr = uia->ElementFromHandleBuildCache(hwnd_, cache, &root);
     if (SUCCEEDED(hr) && root) {

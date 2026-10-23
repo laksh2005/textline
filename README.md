@@ -10,23 +10,40 @@ the device.
 > "I was on WhatsApp 10 minutes ago. What was on my screen?" Open **Timeline**, click that moment,
 > and read the chat as text.
 
+**Stack:** Electron 44 + React 19 (JavaScript, electron-vite), a C++ Node addon calling Windows UI
+Automation, SQLite via Electron's built-in `node:sqlite`, and electron-builder for the installer.
+
+## How the brief is met
+
+| Requirement | How | Where |
+|---|---|---|
+| **Now** view: app in focus + its text, live | Main pushes every switch and every new capture to the UI over IPC. While you look at Textline itself, it keeps showing the last app. | `NowView.jsx`, `capture.js` |
+| **Timeline**: app, window, time, duration; click any point | A bar of sessions over 15m/1h/4h/24h. Clicking a point finds the session in focus then and its latest capture. You can step through earlier and later captures. | `TimelineView.jsx`, `db.getScreenAt` |
+| Track foreground app + window, timestamp every switch | `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`. Each new window, or new title (e.g. a browser tab), starts a session with a start and end time. | `uia.cc`, `capture.js` |
+| Read text from the accessibility tree, with structure | UI Automation tree → lines with roles: headings, list items, links, inputs, sender labels ("Name:"). The browser URL comes from the web document. | `uia.cc`, `format.js` |
+| Re-capture on change, skip duplicates | Name, value, scroll and structure events (debounced) plus a 3 s poll. A SHA-256 of URL + content is compared with the last capture. | `uia.cc`, `capture.js` |
+| Runs in the background from the tray | Closing the window hides it. The tray has open, pause/resume, start at login and quit. | `tray.js`, `index.js` |
+| Stored locally | SQLite file at `%APPDATA%\Textline\textline.db` | `db.js` |
+| Electron + React only | UI is React in Electron. Windows access is a native Node addon loaded in Electron's main process, with no helper process or other runtime. | `native/uia` |
+| No screenshots, recording or OCR | Text comes only from UI Automation properties (Name, Value, TextPattern). No pixel APIs are used anywhere. | `uia.cc` |
+| No per-app integrations | One code path for every app. Nothing branches on app names. | `format.js` |
+| No cloud | There is no network code. Everything stays in the local database. | |
+
 ## Setup
 
-Requirements: Windows 10/11, Node.js 22+, and
+Requirements: Windows 10/11, Node.js 22.13+, and
 [Visual Studio 2022 Build Tools](https://aka.ms/vs/17/release/vs_BuildTools.exe) with the
 **Desktop development with C++** workload (it compiles the small native module).
 
 ```bash
-npm install
-npm run build:native   # compile the UI Automation addon for Electron
-npm run dev            # start the app (window + tray icon)
+npm install    # also compiles the native addon (npm run build:native)
+npm run dev    # start the app (window + tray icon)
 ```
 
 ### Installer
 
 ```bash
-npm run build:native   # once, if not done already
-npm run build:win      # -> dist/Textline-1.0.0-setup.exe
+npm run build:win   # -> dist/Textline-1.0.0-setup.exe
 ```
 
 The installer is per-user (no admin needed) and adds Start menu and desktop shortcuts. It's
@@ -128,6 +145,7 @@ npm test   # formatter: URL detection, roles, multi-line text, dedupe of repeats
 ## Dev scripts
 
 ```powershell
-$env:ELECTRON_RUN_AS_NODE=1; npx electron scripts/probe.js 5        # print the capture of the window in focus after 5 s
-$env:ELECTRON_RUN_AS_NODE=1; npx electron scripts/inspect-db.js chrome  # recent sessions + latest Chrome snapshot
+$env:ELECTRON_RUN_AS_NODE=1; npx electron scripts/probe.js 5   # print what the focused window gives after 5 s
+node scripts/inspect-db.js chrome                                # recent sessions + latest Chrome snapshot
+npm run icons                                                    # regenerate icons from resources/logo.svg
 ```

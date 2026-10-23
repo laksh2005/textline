@@ -1,5 +1,5 @@
 // Dev tool: summary of what Textline has stored. Read-only.
-// Usage (PowerShell): $env:ELECTRON_RUN_AS_NODE=1; npx electron scripts/inspect-db.js
+// Usage: node scripts/inspect-db.js [app]
 const { DatabaseSync } = require('node:sqlite')
 const { join } = require('path')
 const db = new DatabaseSync(join(process.env.APPDATA, 'Textline', 'textline.db'), {

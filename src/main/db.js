@@ -59,10 +59,9 @@ export function addSnapshot(sessionId, { url, hash, text, lines }, now) {
 export function listSessions(from, to) {
   return db
     .prepare(
-      `SELECT s.*, (SELECT COUNT(*) FROM snapshots WHERE session_id = s.id) AS snapshot_count
-       FROM sessions s
-       WHERE s.started_at <= ? AND COALESCE(s.ended_at, ?) >= ?
-       ORDER BY s.started_at`
+      `SELECT * FROM sessions
+       WHERE started_at <= ? AND COALESCE(ended_at, ?) >= ?
+       ORDER BY started_at`
     )
     .all(to, Date.now(), from)
 }

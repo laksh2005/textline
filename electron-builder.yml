@@ -3,9 +3,8 @@ productName: Textline
 directories:
   buildResources: build
 files:
-  - '!**/.vscode/*'
   - '!src/*'
-  - '!scripts/*'
+  - '!{scripts,tests}/*'
   - '!native/uia/*.{cc,gyp}'
   - '!native/uia/build/**/*.{obj,pdb,lib,exp,iobj,ipdb,tlog,log,vcxproj*}'
   - '!electron.vite.config.{js,ts,mjs,cjs}'

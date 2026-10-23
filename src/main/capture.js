@@ -45,7 +45,7 @@ export function createCapture(uia, onUpdate) {
     const now = Date.now()
 
     // Nothing in focus, or the user is looking at Textline itself: not tracked.
-    if (!fg || !fg.exe || fg.pid === process.pid || isOwnWindow(fg)) {
+    if (!fg || !fg.exe || fg.pid === process.pid) {
       closeCurrent(now)
       return
     }
@@ -115,12 +115,6 @@ export function createCapture(uia, onUpdate) {
       session: { id: sessionId, app, exe, title },
       snapshot
     }
-  }
-
-  // Textline's own windows belong to Electron child processes with other pids,
-  // so also match by exe name.
-  function isOwnWindow(fg) {
-    return fg.exe.toLowerCase() === process.execPath.toLowerCase()
   }
 
   return {

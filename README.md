@@ -119,6 +119,12 @@ General limits:
 - **Change detection** is event-driven with a 3 s poll, so a change that appears and disappears
   within about 3 s without firing an event can be missed.
 
+## Tests
+
+```bash
+npm test   # formatter: URL detection, roles, multi-line text, dedupe of repeats, offscreen
+```
+
 ## Dev scripts
 
 ```powershell

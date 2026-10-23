@@ -14,7 +14,8 @@
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:native": "electron-rebuild --module-dir native/uia --force",
-    "icons": "node scripts/make-icons.mjs"
+    "icons": "node scripts/make-icons.mjs",
+    "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0"

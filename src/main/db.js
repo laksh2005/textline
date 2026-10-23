@@ -66,7 +66,7 @@ export function closeDb() {
 export function backupDb() {
   const dir = join(app.getPath('userData'), 'backups')
   mkdirSync(dir, { recursive: true })
-  const file = join(dir, `textline-${new Date().toISOString().slice(0, 10)}.db`)
+  const file = join(dir, `textline-${new Date().toLocaleDateString('sv')}.db`) // 'sv' formats as YYYY-MM-DD, in local time
   rmSync(file, { force: true }) // VACUUM INTO won't overwrite
   db.prepare('VACUUM INTO ?').run(file)
 

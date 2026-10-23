@@ -13,8 +13,11 @@ import { cleanTitle, formatTree } from './format'
 
 const POLL_MS = 3000 // backstop for changes that fire no event
 const DEBOUNCE_MS = 500 // wait for a burst of changes to settle
+const READ_TIMEOUT_MS = 5000 // give up on a window that doesn't answer in time
+const SKIP_SLOW_MS = 60000 // ...and don't ask it again for a minute
 
 export function createCapture(uia, onUpdate) {
+  const slowUntil = new Map() // hwnd -> time until which we skip it
   let current = null // { hwnd, title, sessionId, app, exe, lastHash, snapshot }
   let last = null // the previous `current`, shown while Textline itself is in focus
   let paused = false
@@ -93,17 +96,27 @@ export function createCapture(uia, onUpdate) {
   }
 
   // The focused window's tree, plus any windows embedded in it by helper processes
-  // (e.g. WebView2 content). A window without a tree is skipped, not fatal.
+  // (e.g. WebView2 content). A window that has no tree or doesn't answer in time is
+  // skipped, so one unresponsive app can never stop recording.
   async function readWindow(fg) {
     const nodes = []
     for (const hwnd of [fg.hwnd, ...fg.embedded]) {
+      if (slowUntil.get(hwnd) > Date.now()) continue
       try {
-        nodes.push(...(await uia.snapshot(hwnd)).nodes)
-      } catch {
-        // this window exposes no accessibility tree
+        nodes.push(...(await withTimeout(uia.snapshot(hwnd), READ_TIMEOUT_MS)).nodes)
+      } catch (e) {
+        if (e.message === 'timeout') slowUntil.set(hwnd, Date.now() + SKIP_SLOW_MS)
       }
     }
     return nodes
+  }
+
+  function withTimeout(promise, ms) {
+    let timer
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('timeout')), ms)
+    })
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
   }
 
   function closeCurrent(now) {

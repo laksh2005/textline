@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: tmp
+appId: com.textline.app
+productName: Textline
 directories:
   buildResources: build
 files:
@@ -10,8 +10,9 @@ files:
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
 asarUnpack:
   - resources/**
+  - native/uia/build/Release/*.node
 win:
-  executableName: tmp
+  executableName: Textline
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}

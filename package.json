@@ -13,7 +13,8 @@
     "postinstall": "install-electron && electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
-    "build:native": "electron-rebuild --module-dir native/uia --force"
+    "build:native": "electron-rebuild --module-dir native/uia --force",
+    "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0"
@@ -31,9 +32,11 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
     "node-addon-api": "^8.9.2",
+    "png-to-ico": "^3.0.2",
     "prettier": "^3.9.10",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "sharp": "^0.35.5",
     "vite": "^8.3.4"
   },
   "productName": "Textline"

@@ -16,6 +16,7 @@ const DEBOUNCE_MS = 500 // wait for a burst of changes to settle
 
 export function createCapture(uia, onUpdate) {
   let current = null // { hwnd, title, sessionId, app, exe, lastHash, snapshot }
+  let last = null // the previous `current`, shown while Textline itself is in focus
   let paused = false
   let busy = false
   let again = false
@@ -93,6 +94,7 @@ export function createCapture(uia, onUpdate) {
   function closeCurrent(now) {
     if (!current) return
     db.endSession(current.sessionId, now)
+    last = current
     current = null
     emit()
   }
@@ -101,10 +103,18 @@ export function createCapture(uia, onUpdate) {
     onUpdate(getNow())
   }
 
+  // While the user looks at Textline itself, "Now" keeps showing the last app they
+  // were in (inFocus: false) instead of going blank.
   function getNow() {
-    if (!current) return { paused, session: null, snapshot: null }
-    const { app, exe, title, sessionId, snapshot } = current
-    return { paused, session: { id: sessionId, app, exe, title }, snapshot }
+    const shown = current ?? last
+    if (!shown) return { paused, inFocus: false, session: null, snapshot: null }
+    const { app, exe, title, sessionId, snapshot } = shown
+    return {
+      paused,
+      inFocus: shown === current,
+      session: { id: sessionId, app, exe, title },
+      snapshot
+    }
   }
 
   // Textline's own windows belong to Electron child processes with other pids,

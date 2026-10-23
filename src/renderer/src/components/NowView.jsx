@@ -13,5 +13,14 @@ export default function NowView({ now }) {
       </p>
     )
   }
-  return <ScreenText session={now.session} snapshot={now.snapshot} live />
+  return (
+    <>
+      {!now.inFocus && (
+        <p className="hint">
+          Showing the last app you were in. Click any other app and this updates live.
+        </p>
+      )}
+      <ScreenText session={now.session} snapshot={now.snapshot} live={now.inFocus} />
+    </>
+  )
 }

@@ -21,26 +21,17 @@ export function createCapture(uia, onUpdate) {
   let current = null // { hwnd, title, sessionId, app, exe, lastHash, snapshot }
   let last = null // the previous `current`, shown while Textline itself is in focus
   let paused = false
-  let busy = false
-  let again = false
+  let busy = false // one capture at a time
   let debounce = null
 
+  // Runs one capture. If one is already running this trigger is skipped; the next
+  // event or the 3 s poll picks up whatever changed.
   function tick() {
-    if (paused) return
-    if (busy) {
-      again = true // a capture is running; run once more when it finishes
-      return
-    }
+    if (paused || busy) return
     busy = true
     capture()
       .catch((e) => console.error('capture failed:', e.message))
-      .finally(() => {
-        busy = false
-        if (again) {
-          again = false
-          tick()
-        }
-      })
+      .finally(() => (busy = false))
   }
 
   async function capture() {

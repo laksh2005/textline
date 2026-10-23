@@ -45,12 +45,6 @@ export function openDb() {
       INSERT INTO snapshots_fts (rowid, text) VALUES (new.id, new.text);
     END;
   `)
-  // Index snapshots saved before search existed (runs once per database).
-  if (db.prepare('PRAGMA user_version').get().user_version < 1) {
-    db.exec(
-      `INSERT INTO snapshots_fts (snapshots_fts) VALUES ('rebuild'); PRAGMA user_version = 1;`
-    )
-  }
   // If the app crashed, close any session left open.
   db.prepare('UPDATE sessions SET ended_at = started_at WHERE ended_at IS NULL').run()
 }

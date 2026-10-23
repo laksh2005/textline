@@ -2,42 +2,25 @@
 // structured lines. This is generic: it only looks at UI Automation roles, never at
 // which app the tree came from.
 
-// UI Automation control type ids -> short role names.
+// UI Automation control type ids that matter for reading. Anything not listed is plain text.
 // https://learn.microsoft.com/windows/win32/winauto/uiauto-controltype-ids
-const ROLES = {
-  50000: 'button',
-  50002: 'checkbox',
-  50003: 'combobox',
-  50004: 'edit',
+const KIND = {
+  50000: 'control', // button
+  50011: 'control', // menu item
+  50019: 'control', // tab item
   50005: 'link',
-  50006: 'image',
-  50007: 'listitem',
-  50008: 'list',
-  50011: 'menuitem',
-  50014: 'scrollbar',
-  50018: 'tab',
-  50019: 'tabitem',
-  50020: 'text',
-  50021: 'toolbar',
-  50023: 'tree',
-  50024: 'treeitem',
-  50026: 'group',
-  50027: 'thumb',
-  50028: 'datagrid',
-  50029: 'dataitem',
-  50030: 'document',
-  50032: 'window',
-  50033: 'pane',
-  50036: 'table',
-  50037: 'titlebar',
-  50038: 'separator'
+  50004: 'input', // edit box
+  50003: 'input', // combo box
+  50007: 'item', // list item
+  50024: 'item', // tree item
+  50029: 'item' // data item (table row)
 }
+const DOCUMENT = 50030 // a web page or editor document
+// Window chrome that never carries content: scrollbar, thumb, title bar, separator.
+const SKIP = new Set([50014, 50027, 50037, 50038])
 
 // UIA_MainLandmarkTypeId: the region an app marks as its main content (e.g. HTML <main>).
 const MAIN_LANDMARK = 80002
-
-// Window chrome that never carries content.
-const SKIP = new Set(['scrollbar', 'thumb', 'separator', 'titlebar'])
 
 export function formatTree(nodes) {
   // Prefer what is actually visible. Some apps mark everything offscreen,
@@ -51,7 +34,7 @@ export function formatTree(nodes) {
   let url = null
 
   for (const n of visible) {
-    const role = ROLES[n.type] ?? 'other'
+    const kind = KIND[n.type] ?? 'text'
     parentText.length = n.depth
 
     // Which part of the window is this in? Apps mark regions as landmarks:
@@ -63,16 +46,16 @@ export function formatTree(nodes) {
     regionAt[n.depth] = region
 
     // A browser's web page is a "document" whose value is the page URL.
-    if (!url && role === 'document' && looksLikeUrl(n.value)) url = n.value
-    if (SKIP.has(role)) continue
+    if (!url && n.type === DOCUMENT && looksLikeUrl(n.value)) url = n.value
+    if (SKIP.has(n.type)) continue
 
     // Multi-line text (an editor's contents): keep its own lines.
     if (/[\r\n]/.test(n.value ?? '')) {
       const label = clean(n.name)
-      if (label) lines.push({ depth: n.depth, kind: kindOf(role), role, region, text: label })
+      if (label) lines.push({ depth: n.depth, kind, region, text: label })
       for (const raw of n.value.split(/\r\n|\r|\n/)) {
         const text = raw.replace(/\s+$/, '')
-        if (text) lines.push({ depth: n.depth + 1, kind: 'body', role, region, text })
+        if (text) lines.push({ depth: n.depth + 1, kind: 'body', region, text })
       }
       continue
     }
@@ -81,15 +64,20 @@ export function formatTree(nodes) {
     const value = clean(n.value)
     // Show the value only when it adds something (e.g. what's typed in a box).
     let text = name
-    if (value && value !== name && role !== 'document') text = name ? `${name}: ${value}` : value
+    if (value && value !== name && n.type !== DOCUMENT) text = name ? `${name}: ${value}` : value
     if (!text) continue
 
     // Containers often repeat their children's text; skip exact repeats of an ancestor.
     if (parentText.includes(text)) continue
     parentText[n.depth] = text
 
-    const kind = n.heading ? 'heading' : kindOf(role)
-    lines.push({ depth: n.depth, kind, level: n.heading || undefined, role, region, text })
+    lines.push({
+      depth: n.depth,
+      kind: n.heading ? 'heading' : kind,
+      level: n.heading || undefined,
+      region,
+      text
+    })
   }
 
   // Indent relative to the shallowest line, capped so deep trees stay readable.
@@ -98,14 +86,6 @@ export function formatTree(nodes) {
 
   const text = lines.map((l) => '  '.repeat(l.depth) + l.text).join('\n')
   return { url, lines, text }
-}
-
-function kindOf(role) {
-  if (role === 'listitem' || role === 'dataitem' || role === 'treeitem') return 'item'
-  if (role === 'link') return 'link'
-  if (role === 'edit' || role === 'combobox') return 'input'
-  if (role === 'button' || role === 'menuitem' || role === 'tabitem') return 'control'
-  return 'text'
 }
 
 function clean(s) {

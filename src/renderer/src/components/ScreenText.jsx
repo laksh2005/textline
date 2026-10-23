@@ -57,7 +57,6 @@ export default function ScreenText({ session, snapshot, live = false }) {
               key={i}
               className={`line ${line.kind}${line.level ? ` h${line.level}` : ''}${isLabel(line) ? ' label' : ''}`}
               style={{ marginLeft: Math.min(line.depth, 6) * 12 }}
-              title={line.role}
             >
               {line.text}
             </div>

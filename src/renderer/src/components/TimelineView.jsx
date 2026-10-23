@@ -2,13 +2,14 @@
 // list) to read what was on screen at that moment.
 import { useCallback, useEffect, useState } from 'react'
 import ScreenText from './ScreenText'
-import { appColor, formatDuration, formatTime } from '../time'
+import AppBadge from './AppBadge'
+import { appColor, formatClock, formatDuration, formatTime } from '../time'
 
 const RANGES = [
-  { label: '15 min', ms: 15 * 60e3 },
-  { label: '1 hour', ms: 60 * 60e3 },
-  { label: '4 hours', ms: 4 * 60 * 60e3 },
-  { label: '24 hours', ms: 24 * 60 * 60e3 }
+  { label: '15m', ms: 15 * 60e3 },
+  { label: '1h', ms: 60 * 60e3 },
+  { label: '4h', ms: 4 * 60 * 60e3 },
+  { label: '24h', ms: 24 * 60 * 60e3 }
 ]
 
 export default function TimelineView() {
@@ -17,6 +18,7 @@ export default function TimelineView() {
   const [sessions, setSessions] = useState([])
   const [picked, setPicked] = useState(null) // { t, session, snapshot }
   const [snapshotTimes, setSnapshotTimes] = useState([])
+  const [hover, setHover] = useState(null) // { x, t } while the mouse is over the bar
   const from = to - rangeMs
 
   // Keep the window sliding with the clock.
@@ -40,44 +42,63 @@ export default function TimelineView() {
     setPicked((p) => ({ ...p, t: snapshot.ts, snapshot }))
   }
 
-  function onBarClick(e) {
+  // Converts a mouse position on the bar into a point in time.
+  function timeAt(e) {
     const rect = e.currentTarget.getBoundingClientRect()
-    pickTime(from + ((e.clientX - rect.left) / rect.width) * rangeMs)
+    const x = e.clientX - rect.left
+    return { x, t: from + (x / rect.width) * rangeMs }
   }
 
   const position = (t) => `${((Math.max(t, from) - from) / rangeMs) * 100}%`
   const width = (s) =>
     `${((Math.min(s.ended_at ?? to, to) - Math.max(s.started_at, from)) / rangeMs) * 100}%`
+  const sessionAt = (t) => sessions.find((s) => s.started_at <= t && (s.ended_at ?? to) >= t)
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => from + f * rangeMs)
   const index = snapshotTimes.findIndex((s) => s.id === picked?.snapshot?.id)
+  const hoverSession = hover && sessionAt(hover.t)
 
   return (
     <div className="timeline">
-      <div className="toolbar">
-        {RANGES.map((r) => (
-          <button
-            key={r.ms}
-            className={r.ms === rangeMs ? 'active' : ''}
-            onClick={() => setRangeMs(r.ms)}
-          >
-            {r.label}
-          </button>
-        ))}
+      <div className="timeline-head">
+        <h2>Where you&apos;ve been</h2>
+        <nav className="segmented small">
+          {RANGES.map((r) => (
+            <button
+              key={r.ms}
+              className={r.ms === rangeMs ? 'active' : ''}
+              onClick={() => setRangeMs(r.ms)}
+            >
+              {r.label}
+            </button>
+          ))}
+        </nav>
       </div>
 
-      <div className="bar" onClick={onBarClick}>
+      <div
+        className="bar"
+        onClick={(e) => pickTime(timeAt(e).t)}
+        onMouseMove={(e) => setHover(timeAt(e))}
+        onMouseLeave={() => setHover(null)}
+      >
         {sessions.map((s) => (
           <div
             key={s.id}
             className="block"
             style={{ left: position(s.started_at), width: width(s), background: appColor(s.app) }}
-            title={`${s.app} · ${s.title}`}
           />
         ))}
         {picked && <div className="cursor" style={{ left: position(picked.t) }} />}
+        {hover && (
+          <div className="tooltip" style={{ left: hover.x }}>
+            <strong>{formatTime(hover.t)}</strong>
+            {hoverSession ? ` · ${hoverSession.app}` : ' · nothing recorded'}
+          </div>
+        )}
       </div>
-      <div className="bar-labels">
-        <span>{formatTime(from)}</span>
-        <span>now</span>
+      <div className="ticks">
+        {ticks.map((t, i) => (
+          <span key={i}>{i === ticks.length - 1 ? 'Now' : formatClock(t)}</span>
+        ))}
       </div>
 
       <div className="split">
@@ -88,45 +109,45 @@ export default function TimelineView() {
               className={picked?.session?.id === s.id ? 'selected' : ''}
               onClick={() => pickTime(Math.min(s.ended_at ?? Date.now(), Date.now()))}
             >
-              <span className="dot" style={{ background: appColor(s.app) }} />
-              <span className="s-app">{s.app}</span>
-              <span className="s-title">{s.title}</span>
-              <span className="s-time">
-                {formatTime(s.started_at)} · {formatDuration((s.ended_at ?? to) - s.started_at)}
-              </span>
+              <AppBadge app={s.app} />
+              <div className="s-main">
+                <div className="s-title">{s.title || s.app}</div>
+                <div className="s-meta">
+                  {s.app} · {formatClock(s.started_at)} ·{' '}
+                  {formatDuration((s.ended_at ?? to) - s.started_at)}
+                </div>
+              </div>
             </li>
           ))}
-          {sessions.length === 0 && <p className="empty">No activity in this range.</p>}
+          {sessions.length === 0 && <p className="notice">No activity in this range yet.</p>}
         </ol>
 
         <div className="viewer">
           {!picked && (
-            <p className="empty">Click a point on the bar or a row to see that screen.</p>
+            <p className="notice">Click any point on the bar, or a row, to read that screen.</p>
           )}
-          {picked && (
-            <>
-              {snapshotTimes.length > 1 && (
-                <div className="stepper">
-                  <button
-                    disabled={index <= 0}
-                    onClick={() => pickSnapshot(snapshotTimes[index - 1].id)}
-                  >
-                    ← Earlier
-                  </button>
-                  <span>
-                    Capture {index + 1} of {snapshotTimes.length}
-                  </span>
-                  <button
-                    disabled={index < 0 || index >= snapshotTimes.length - 1}
-                    onClick={() => pickSnapshot(snapshotTimes[index + 1].id)}
-                  >
-                    Later →
-                  </button>
-                </div>
-              )}
-              <ScreenText session={picked.session} snapshot={picked.snapshot} />
-            </>
+          {picked && snapshotTimes.length > 1 && (
+            <div className="stepper">
+              <button
+                className="ghost"
+                disabled={index <= 0}
+                onClick={() => pickSnapshot(snapshotTimes[index - 1].id)}
+              >
+                ← Earlier
+              </button>
+              <span>
+                Capture {index + 1} of {snapshotTimes.length}
+              </span>
+              <button
+                className="ghost"
+                disabled={index < 0 || index >= snapshotTimes.length - 1}
+                onClick={() => pickSnapshot(snapshotTimes[index + 1].id)}
+              >
+                Later →
+              </button>
+            </div>
           )}
+          {picked && <ScreenText session={picked.session} snapshot={picked.snapshot} />}
         </div>
       </div>
     </div>

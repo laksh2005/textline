@@ -65,7 +65,8 @@ resume or quit. Data is stored in `%APPDATA%\Textline\textline.db`.
   capture after a 500 ms debounce, so bursts collapse into one capture. A 3 s poll catches apps that
   change without firing events.
 - **Skip duplicates by hash.** Each capture is hashed (URL + text). If it matches the last capture
-  of the session, nothing is written.
+  of the session, nothing is written. Text typed into input boxes is left out of the hash, so typing
+  a message isn't a capture per keystroke. The draft is saved with the next real change.
 - **A session is one window with one title.** Switching apps or browser tabs (the title changes)
   starts a new timeline entry with its own timestamp.
 - **Built-in SQLite.** Electron's Node ships `node:sqlite`, so there is no second native module to
@@ -86,7 +87,7 @@ resume or quit. Data is stored in `%APPDATA%\Textline\textline.db`.
 | Google Chrome / Microsoft Edge | ✅ Text, tabs, URL | Chromium builds its tree lazily: the first read can be thin, so Textline retries once. |
 | Electron apps (e.g. Claude desktop) | ✅ Full text, URL | Same lazy tree behaviour as Chrome. |
 | Notepad | ✅ Full file text | Editor text comes from TextPattern, not Value. |
-| WhatsApp Web (Chrome) | _pending_ | |
+| WhatsApp Web (Chrome) | ✅ Messages, senders, links, chat name | Senders appear as labels ("You:", contact name) before each message. Message bodies are plain text runs that Chromium marks as non-control, so Textline adds every Text element to the control view. Tested in Chrome; the WhatsApp desktop app was not installed on the test machine. |
 | VS Code, Teams, Discord, Word | _pending_ | |
 
 General limits:

@@ -79,7 +79,9 @@ export function createCapture(uia, onUpdate) {
     // What's typed into input boxes is left out of the hash, so each keystroke in a
     // message box isn't a new capture. The draft is still saved with the next real change.
     const content = lines.filter((l) => l.kind !== 'input').map((l) => l.text)
-    const hash = createHash('sha256').update(`${url}\n${content.join('\n')}`).digest('hex')
+    const hash = createHash('sha256')
+      .update(`${url}\n${content.join('\n')}`)
+      .digest('hex')
     if (hash === current.lastHash) return // duplicate: nothing changed on screen
 
     current.lastHash = hash

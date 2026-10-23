@@ -1,7 +1,7 @@
 // Tests for the tree -> text formatter. Run: npm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { formatTree } from '../src/main/format.js'
+import { cleanTitle, formatTree } from '../src/main/format.js'
 
 // UI Automation control type ids used below.
 const WINDOW = 50032,
@@ -88,4 +88,10 @@ test('skips offscreen elements, but keeps everything if an app marks all offscre
     node(1, TEXT, 'only text', { offscreen: true })
   ])
   assert.ok(allOff.text.includes('only text'))
+})
+
+test('drops a leading unread count from window titles', () => {
+  assert.equal(cleanTitle('(22) WhatsApp - Google Chrome'), 'WhatsApp - Google Chrome')
+  assert.equal(cleanTitle('(99+) Inbox'), 'Inbox')
+  assert.equal(cleanTitle('Report (2) - Word'), 'Report (2) - Word')
 })

@@ -9,7 +9,7 @@
 import { createHash } from 'crypto'
 import { basename } from 'path'
 import * as db from './db'
-import { formatTree } from './format'
+import { cleanTitle, formatTree } from './format'
 
 const POLL_MS = 3000 // backstop for changes that fire no event
 const DEBOUNCE_MS = 500 // wait for a burst of changes to settle
@@ -52,13 +52,14 @@ export function createCapture(uia, onUpdate) {
 
     // A different window, or the same window with a new title (e.g. a new tab),
     // is a switch: end the old session and start a new one.
-    if (!current || current.hwnd !== fg.hwnd || current.title !== fg.title) {
+    const title = cleanTitle(fg.title)
+    if (!current || current.hwnd !== fg.hwnd || current.title !== title) {
       closeCurrent(now)
       const app = basename(fg.exe).replace(/\.exe$/i, '') // WINWORD.EXE -> WINWORD
-      const sessionId = db.startSession({ app, exe: fg.exe, title: fg.title }, now)
+      const sessionId = db.startSession({ app, exe: fg.exe, title }, now)
       current = {
         hwnd: fg.hwnd,
-        title: fg.title,
+        title,
         app,
         exe: fg.exe,
         sessionId,

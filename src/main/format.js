@@ -103,3 +103,9 @@ function clean(s) {
 function looksLikeUrl(s) {
   return /^(https?|file|chrome|edge|about):/i.test(s ?? '')
 }
+
+// Many apps put an unread count in the title ("(3) WhatsApp", "(12) Inbox"). It changes
+// with every new message, so leave it out; otherwise one chat splits into many sessions.
+export function cleanTitle(title) {
+  return title.replace(/^\(\d+\+?\)\s*/, '')
+}

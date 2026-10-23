@@ -4,3 +4,7 @@ out
 .DS_Store
 .eslintcache
 *.log*
+
+# native addon build output
+native/uia/build/
+native/uia/bin/

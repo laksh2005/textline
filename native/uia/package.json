@@ -1,0 +1,7 @@
+{
+  "name": "uia",
+  "version": "1.0.0",
+  "private": true,
+  "main": "build/Release/uia.node",
+  "gypfile": true
+}

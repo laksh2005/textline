@@ -1,74 +1,97 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+// Main process entry: wires storage, capture, tray, window and IPC together.
+import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import icon from '../../resources/icon.png?asset'
+import { electronApp, is } from '@electron-toolkit/utils'
+import * as db from './db'
+import { loadUia } from './native'
+import { createCapture } from './capture'
+import { createTray } from './tray'
+
+let win = null
+let capture = null
+let tray = null
+let quitting = false
+let captureError = null
 
 function createWindow() {
-  // Create the browser window.
-  const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+  win = new BrowserWindow({
+    width: 1100,
+    height: 750,
     show: false,
     autoHideMenuBar: true,
-    ...(process.platform === 'linux' ? { icon } : {}),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+    title: 'Textline',
+    webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false }
+  })
+  win.on('ready-to-show', () => win.show())
+  // Closing the window only hides it; recording continues in the tray.
+  win.on('close', (e) => {
+    if (!quitting) {
+      e.preventDefault()
+      win.hide()
     }
   })
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
-  })
-
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
-
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  if (is.dev && process.env['ELECTRON_RENDERER_URL'])
+    win.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  else win.loadFile(join(__dirname, '../renderer/index.html'))
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
+function showWindow() {
+  if (!win) createWindow()
+  win.show()
+  win.focus()
+}
+
+function send(channel, data) {
+  if (win && !win.isDestroyed()) win.webContents.send(channel, data)
+}
+
+function registerIpc() {
+  ipcMain.handle('now:get', () => ({ ...(capture?.getNow() ?? {}), error: captureError }))
+  ipcMain.handle('sessions:list', (_, from, to) => db.listSessions(from, to))
+  ipcMain.handle('screen:at', (_, t) => db.getScreenAt(t))
+  ipcMain.handle('snapshots:list', (_, sessionId) => db.listSnapshotTimes(sessionId))
+  ipcMain.handle('snapshot:get', (_, id) => db.getSnapshot(id))
+  ipcMain.handle('capture:setPaused', (_, paused) => {
+    capture?.setPaused(paused)
+    tray?.refresh()
+  })
+}
+
+// One instance only: a second launch just opens the existing window.
+if (!app.requestSingleInstanceLock()) app.quit()
+else app.on('second-instance', showWindow)
+
 app.whenReady().then(() => {
-  // Set app user model id for windows
-  electronApp.setAppUserModelId('com.electron')
+  electronApp.setAppUserModelId('com.textline.app')
+  db.openDb()
+  registerIpc()
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
-  })
-
-  // IPC test
-  ipcMain.on('ping', () => console.log('pong'))
-
-  createWindow()
-
-  app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
-})
-
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
+  const { uia, error } = loadUia()
+  captureError = error
+  if (uia) {
+    capture = createCapture(uia, (now) => send('now:update', now))
+    capture.start()
   }
+
+  tray = createTray({
+    onOpen: showWindow,
+    onTogglePause: () => {
+      capture?.setPaused(!capture.isPaused())
+      tray.refresh()
+    },
+    isPaused: () => capture?.isPaused() ?? true,
+    onQuit: () => app.quit()
+  })
+
+  // Started with --hidden (e.g. at login): live in the tray only.
+  if (!process.argv.includes('--hidden')) createWindow()
 })
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.
+app.on('before-quit', () => {
+  quitting = true
+  capture?.stop()
+})
+
+// Keep running in the tray when the window is gone.
+app.on('window-all-closed', () => {})

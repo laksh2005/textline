@@ -69,7 +69,7 @@ export function createCapture(uia, onUpdate) {
 
     let tree = await uia.snapshot(fg.hwnd)
     // Chromium apps build their tree lazily the first time a reader asks. Retry once.
-    if (tree.nodes.length < 10) {
+    if (tree.nodes.length < 50) {
       await new Promise((r) => setTimeout(r, 800))
       tree = await uia.snapshot(fg.hwnd)
     }

@@ -54,6 +54,17 @@ export function formatTree(nodes) {
     if (!url && role === 'document' && looksLikeUrl(n.value)) url = n.value
     if (SKIP.has(role)) continue
 
+    // Multi-line text (an editor's contents): keep its own lines.
+    if (/[\r\n]/.test(n.value ?? '')) {
+      const label = clean(n.name)
+      if (label) lines.push({ depth: n.depth, kind: kindOf(role), role, text: label })
+      for (const raw of n.value.split(/\r\n|\r|\n/)) {
+        const text = raw.replace(/\s+$/, '')
+        if (text) lines.push({ depth: n.depth + 1, kind: 'body', role, text })
+      }
+      continue
+    }
+
     const name = clean(n.name)
     const value = clean(n.value)
     // Show the value only when it adds something (e.g. what's typed in a box).

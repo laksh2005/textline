@@ -7,6 +7,8 @@ import { createCapture } from './capture'
 import { createTray } from './tray'
 import icon from '../../resources/icon.png?asset'
 
+const BACKUP_EVERY_MS = 6 * 60 * 60e3 // plus one at every start
+
 let win = null
 let capture = null
 let tray = null
@@ -59,16 +61,26 @@ function registerIpc() {
   ipcMain.handle('screen:at', (_, t) => db.getScreenAt(t))
   ipcMain.handle('snapshots:list', (_, sessionId) => db.listSnapshotTimes(sessionId))
   ipcMain.handle('snapshot:get', (_, id) => db.getSnapshot(id))
+  ipcMain.handle('search', (_, query) => db.search(query))
   ipcMain.handle('capture:setPaused', (_, paused) => setPaused(paused))
 }
 
-// One instance only: a second launch just opens the existing window.
-if (!app.requestSingleInstanceLock()) app.quit()
+// The dev build keeps its own data folder, so it never shares a database with the
+// installed app.
+if (!app.isPackaged) app.setPath('userData', join(app.getPath('appData'), 'Textline Dev'))
+
+// One instance only: a second launch just opens the existing window and exits
+// without touching the database.
+const isFirstInstance = app.requestSingleInstanceLock()
+if (!isFirstInstance) app.quit()
 else app.on('second-instance', showWindow)
 
 app.whenReady().then(() => {
+  if (!isFirstInstance) return
   app.setAppUserModelId('com.textline.app') // groups the taskbar icon correctly
   db.openDb()
+  db.backupDb()
+  setInterval(db.backupDb, BACKUP_EVERY_MS)
   registerIpc()
 
   const { uia, error } = loadUia()
@@ -92,6 +104,7 @@ app.whenReady().then(() => {
 app.on('before-quit', () => {
   quitting = true
   capture?.stop()
+  if (isFirstInstance) db.closeDb()
 })
 
 // Keep running in the tray when the window is gone.

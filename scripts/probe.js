@@ -7,7 +7,12 @@ const uia = require('../native/uia/build/Release/uia.node')
 setTimeout(
   async () => {
     const fg = uia.getForeground()
-    const { nodes } = await uia.snapshot(fg.hwnd)
+    // Same as capture.js: the focused window plus windows embedded in it.
+    const nodes = []
+    for (const hwnd of [fg.hwnd, ...fg.embedded]) {
+      const tree = await uia.snapshot(hwnd).catch(() => ({ nodes: [] }))
+      nodes.push(...tree.nodes)
+    }
     const { formatTree } = await import('../src/main/format.js')
     const { url, text } = formatTree(nodes)
     console.log(

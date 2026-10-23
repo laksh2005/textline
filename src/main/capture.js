@@ -69,15 +69,15 @@ export function createCapture(uia, onUpdate) {
       emit()
     }
 
-    let tree = await uia.snapshot(fg.hwnd)
+    let nodes = await readWindow(fg)
     // Chromium apps build their tree lazily the first time a reader asks. Retry once.
-    if (tree.nodes.length < 50) {
+    if (nodes.length < 50) {
       await new Promise((r) => setTimeout(r, 800))
-      tree = await uia.snapshot(fg.hwnd)
+      nodes = await readWindow(fg)
     }
     if (!current || current.hwnd !== fg.hwnd) return // user switched while we read
 
-    const { url, lines, text } = formatTree(tree.nodes)
+    const { url, lines, text } = formatTree(nodes)
     // What's typed into input boxes is left out of the hash, so each keystroke in a
     // message box isn't a new capture. The draft is still saved with the next real change.
     const content = lines.filter((l) => l.kind !== 'input').map((l) => l.text)
@@ -90,6 +90,20 @@ export function createCapture(uia, onUpdate) {
     current.snapshot = { ts: Date.now(), url, lines, text }
     db.addSnapshot(current.sessionId, { url, hash, text, lines }, current.snapshot.ts)
     emit()
+  }
+
+  // The focused window's tree, plus any windows embedded in it by helper processes
+  // (e.g. WebView2 content). A window without a tree is skipped, not fatal.
+  async function readWindow(fg) {
+    const nodes = []
+    for (const hwnd of [fg.hwnd, ...fg.embedded]) {
+      try {
+        nodes.push(...(await uia.snapshot(hwnd)).nodes)
+      } catch {
+        // this window exposes no accessibility tree
+      }
+    }
+    return nodes
   }
 
   function closeCurrent(now) {

@@ -3,13 +3,14 @@
 // Exposes three functions to Node:
 //   start(callback)   - listens for window events, calls callback("foreground" | "change")
 //   stop()
-//   getForeground()   - { hwnd, pid, title, exe } of the window in focus
+//   getForeground()   - { hwnd, pid, title, exe, embedded } of the window in focus
 //   snapshot(hwnd)    - Promise<{ nodes: [{ depth, type, name, value, heading, landmark, offscreen }] }>
 //
 // Text comes only from the UI Automation accessibility tree. No pixels are read.
 
 #include <napi.h>
 #include <windows.h>
+#include <tlhelp32.h>
 #include <UIAutomation.h>
 #include <thread>
 #include <string>
@@ -111,6 +112,37 @@ static Napi::Value Stop(const Napi::CallbackInfo& info) {
 
 // Store apps run inside ApplicationFrameHost.exe; the real app is a child window
 // owned by a different process. Find it so the timeline shows the real app name.
+// Some apps draw their content in a window owned by a helper process they started,
+// placed on top of their own frame (e.g. WebView2: WhatsApp Desktop, new Teams).
+// Find visible windows of the app's child processes that sit inside the app's window.
+struct EmbeddedSearch { std::vector<DWORD> pids; RECT frame; std::vector<HWND> found; };
+static BOOL CALLBACK FindEmbedded(HWND h, LPARAM param) {
+  auto* s = reinterpret_cast<EmbeddedSearch*>(param);
+  DWORD pid = 0;
+  GetWindowThreadProcessId(h, &pid);
+  RECT r;
+  if (!IsWindowVisible(h) || !GetWindowRect(h, &r)) return TRUE;
+  bool inside = r.left >= s->frame.left && r.top >= s->frame.top &&
+                r.right <= s->frame.right && r.bottom <= s->frame.bottom;
+  for (DWORD p : s->pids)
+    if (p == pid && inside) { s->found.push_back(h); break; }
+  return TRUE;
+}
+
+static std::vector<HWND> EmbeddedWindows(HWND app, DWORD appPid) {
+  EmbeddedSearch s;
+  GetWindowRect(app, &s.frame);
+  HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snap != INVALID_HANDLE_VALUE) {
+    PROCESSENTRY32W pe{sizeof(pe)};
+    for (BOOL ok = Process32FirstW(snap, &pe); ok; ok = Process32NextW(snap, &pe))
+      if (pe.th32ParentProcessID == appPid) s.pids.push_back(pe.th32ProcessID);
+    CloseHandle(snap);
+  }
+  if (!s.pids.empty()) EnumWindows(FindEmbedded, reinterpret_cast<LPARAM>(&s));
+  return s.found;
+}
+
 struct ChildSearch { DWORD hostPid; DWORD pid; };
 static BOOL CALLBACK FindRealApp(HWND child, LPARAM param) {
   auto* s = reinterpret_cast<ChildSearch*>(param);
@@ -142,6 +174,12 @@ static Napi::Value GetForeground(const Napi::CallbackInfo& info) {
   out.Set("pid", Napi::Number::New(env, pid));
   out.Set("title", Napi::String::New(env, ToUtf8(title, len)));
   out.Set("exe", Napi::String::New(env, exe));
+
+  std::vector<HWND> embedded = EmbeddedWindows(hwnd, pid);
+  Napi::Array list = Napi::Array::New(env, embedded.size());
+  for (size_t i = 0; i < embedded.size(); i++)
+    list.Set(i, Napi::Number::New(env, (double)(uintptr_t)embedded[i]));
+  out.Set("embedded", list);
   return out;
 }
 

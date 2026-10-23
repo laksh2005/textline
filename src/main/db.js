@@ -2,7 +2,10 @@
 // no extra native database module to build. The file lives in the user's AppData.
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'path'
+import { mkdirSync, readdirSync, rmSync } from 'fs'
 import { app } from 'electron'
+
+const KEEP_BACKUPS = 7 // one per day
 
 let db
 
@@ -34,9 +37,41 @@ export function openDb() {
 
     CREATE INDEX IF NOT EXISTS snapshots_by_session ON snapshots(session_id, ts);
     CREATE INDEX IF NOT EXISTS sessions_by_time ON sessions(started_at);
+
+    -- Full-text search over snapshot text (SQLite FTS5), kept in sync by a trigger.
+    CREATE VIRTUAL TABLE IF NOT EXISTS snapshots_fts
+      USING fts5(text, content = 'snapshots', content_rowid = 'id');
+    CREATE TRIGGER IF NOT EXISTS snapshots_to_fts AFTER INSERT ON snapshots BEGIN
+      INSERT INTO snapshots_fts (rowid, text) VALUES (new.id, new.text);
+    END;
   `)
+  // Index snapshots saved before search existed (runs once per database).
+  if (db.prepare('PRAGMA user_version').get().user_version < 1) {
+    db.exec(
+      `INSERT INTO snapshots_fts (snapshots_fts) VALUES ('rebuild'); PRAGMA user_version = 1;`
+    )
+  }
   // If the app crashed, close any session left open.
   db.prepare('UPDATE sessions SET ended_at = started_at WHERE ended_at IS NULL').run()
+}
+
+// Writes the write-ahead log back into the main file and closes cleanly.
+export function closeDb() {
+  db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+  db.close()
+}
+
+// Daily backup: a consistent copy (VACUUM INTO works while the app is writing) in
+// <userData>/backups/textline-YYYY-MM-DD.db. Keeps the newest KEEP_BACKUPS files.
+export function backupDb() {
+  const dir = join(app.getPath('userData'), 'backups')
+  mkdirSync(dir, { recursive: true })
+  const file = join(dir, `textline-${new Date().toISOString().slice(0, 10)}.db`)
+  rmSync(file, { force: true }) // VACUUM INTO won't overwrite
+  db.prepare('VACUUM INTO ?').run(file)
+
+  const daily = readdirSync(dir).filter((f) => /^textline-\d{4}-\d{2}-\d{2}\.db$/.test(f))
+  for (const old of daily.sort().slice(0, -KEEP_BACKUPS)) rmSync(join(dir, old))
 }
 
 export function startSession({ app, exe, title }, now) {
@@ -54,6 +89,34 @@ export function addSnapshot(sessionId, { url, hash, text, lines }, now) {
   db.prepare(
     'INSERT INTO snapshots (session_id, ts, url, hash, text, lines) VALUES (?, ?, ?, ?, ?, ?)'
   ).run(sessionId, now, url, hash, text, JSON.stringify(lines))
+}
+
+// "When did I see X?" -> the newest matching capture in each session, with a snippet.
+// Each word is quoted so user input can't break the FTS query syntax.
+export function search(query) {
+  const words = query.match(/\S+/g)
+  if (!words) return []
+  const match = words.map((w) => `"${w.replaceAll('"', '""')}"`).join(' ')
+  const rows = db
+    .prepare(
+      `SELECT n.id, n.ts, n.session_id, s.app, s.title,
+              snippet(snapshots_fts, 0, '[[', ']]', '…', 14) AS snippet
+       FROM snapshots_fts
+       JOIN snapshots n ON n.id = snapshots_fts.rowid
+       JOIN sessions s ON s.id = n.session_id
+       WHERE snapshots_fts MATCH ?
+       ORDER BY n.ts DESC LIMIT 200`
+    )
+    .all(match)
+  // Rows are newest first, so the first row seen for a session is its newest match.
+  const results = []
+  const seen = new Set()
+  for (const row of rows) {
+    if (seen.has(row.session_id)) continue
+    seen.add(row.session_id)
+    results.push(row)
+  }
+  return results.slice(0, 30)
 }
 
 export function listSessions(from, to) {

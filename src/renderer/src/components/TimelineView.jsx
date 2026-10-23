@@ -19,7 +19,16 @@ export default function TimelineView() {
   const [picked, setPicked] = useState(null) // { t, session, snapshot }
   const [snapshotTimes, setSnapshotTimes] = useState([])
   const [hover, setHover] = useState(null) // { x, t } while the mouse is over the bar
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState([]) // search hits, newest first
   const from = to - rangeMs
+
+  // Search all captured text, shortly after the user stops typing.
+  useEffect(() => {
+    if (!query.trim()) return
+    const id = setTimeout(() => window.api.search(query).then(setResults), 250)
+    return () => clearTimeout(id)
+  }, [query])
 
   // Keep the window sliding with the clock.
   useEffect(() => {
@@ -103,23 +112,53 @@ export default function TimelineView() {
 
       <div className="split">
         <ol className="sessions">
-          {[...sessions].reverse().map((s) => (
-            <li
-              key={s.id}
-              className={picked?.session?.id === s.id ? 'selected' : ''}
-              onClick={() => pickTime(Math.min(s.ended_at ?? Date.now(), Date.now()))}
-            >
-              <AppBadge app={s.app} />
-              <div className="s-main">
-                <div className="s-title">{s.title || s.app}</div>
-                <div className="s-meta">
-                  {s.app} · {formatClock(s.started_at)} ·{' '}
-                  {formatDuration((s.ended_at ?? to) - s.started_at)}
+          <input
+            className="search"
+            type="search"
+            placeholder="Search everything you've seen…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+
+          {query.trim() &&
+            results.map((r) => (
+              <li
+                key={r.id}
+                className={picked?.snapshot?.id === r.id ? 'selected' : ''}
+                onClick={() => pickTime(r.ts)}
+              >
+                <AppBadge app={r.app} />
+                <div className="s-main">
+                  <div className="s-title">{r.title || r.app}</div>
+                  <div className="s-meta">
+                    {r.app} · {formatClock(r.ts)}
+                  </div>
+                  <Snippet text={r.snippet} />
                 </div>
-              </div>
-            </li>
-          ))}
-          {sessions.length === 0 && <p className="notice">No activity in this range yet.</p>}
+              </li>
+            ))}
+          {query.trim() && results.length === 0 && <p className="notice">No matches.</p>}
+
+          {!query.trim() &&
+            [...sessions].reverse().map((s) => (
+              <li
+                key={s.id}
+                className={picked?.session?.id === s.id ? 'selected' : ''}
+                onClick={() => pickTime(Math.min(s.ended_at ?? Date.now(), Date.now()))}
+              >
+                <AppBadge app={s.app} />
+                <div className="s-main">
+                  <div className="s-title">{s.title || s.app}</div>
+                  <div className="s-meta">
+                    {s.app} · {formatClock(s.started_at)} ·{' '}
+                    {formatDuration((s.ended_at ?? to) - s.started_at)}
+                  </div>
+                </div>
+              </li>
+            ))}
+          {!query.trim() && sessions.length === 0 && (
+            <p className="notice">No activity in this range yet.</p>
+          )}
         </ol>
 
         <div className="viewer">
@@ -150,6 +189,15 @@ export default function TimelineView() {
           {picked && <ScreenText session={picked.session} snapshot={picked.snapshot} />}
         </div>
       </div>
+    </div>
+  )
+}
+
+// A search snippet, with the matched words (wrapped in [[ ]] by SQLite) highlighted.
+function Snippet({ text }) {
+  return (
+    <div className="snippet">
+      {text.split(/\[\[|\]\]/).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part))}
     </div>
   )
 }

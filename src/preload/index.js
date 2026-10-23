@@ -12,5 +12,6 @@ contextBridge.exposeInMainWorld('api', {
   getScreenAt: (t) => ipcRenderer.invoke('screen:at', t),
   listSnapshots: (sessionId) => ipcRenderer.invoke('snapshots:list', sessionId),
   getSnapshot: (id) => ipcRenderer.invoke('snapshot:get', id),
+  search: (query) => ipcRenderer.invoke('search', query),
   setPaused: (paused) => ipcRenderer.invoke('capture:setPaused', paused)
 })

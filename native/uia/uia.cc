@@ -189,12 +189,33 @@ static void Walk(IUIAutomationElement* el, int depth, std::vector<Node>& out) {
   BOOL offscreen = FALSE;
   el->get_CachedIsOffscreen(&offscreen);
   n.offscreen = offscreen != FALSE;
-  out.push_back(n);
 
   IUIAutomationElementArray* children = nullptr;
-  if (SUCCEEDED(el->GetCachedChildren(&children)) && children) {
-    int count = 0;
-    children->get_Length(&count);
+  int count = 0;
+  if (SUCCEEDED(el->GetCachedChildren(&children)) && children) children->get_Length(&count);
+
+  // Text editors (Notepad, Word, terminals) keep their content behind TextPattern,
+  // not Value. Read it only for leaf documents/edits; containers like web pages
+  // already expose their text as child elements.
+  if (!isPassword && count == 0 && (type == UIA_DocumentControlTypeId || type == UIA_EditControlTypeId)) {
+    IUIAutomationTextPattern* tp = nullptr;
+    if (SUCCEEDED(el->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&tp))) && tp) {
+      IUIAutomationTextRange* range = nullptr;
+      if (SUCCEEDED(tp->get_DocumentRange(&range)) && range) {
+        BSTR text = nullptr;
+        if (SUCCEEDED(range->GetText(50000, &text)) && text) {
+          std::string body = BstrToUtf8(text);
+          if (!body.empty()) n.value = body;
+          SysFreeString(text);
+        }
+        range->Release();
+      }
+      tp->Release();
+    }
+  }
+  out.push_back(n);
+
+  if (children) {
     for (int i = 0; i < count; i++) {
       IUIAutomationElement* child = nullptr;
       if (SUCCEEDED(children->GetElement(i, &child)) && child) {
